@@ -3,6 +3,10 @@ clc
 clear all
 close all
 
+
+
+
+
 %% euler angles initial condition to have coherent attitude rotation matrices at initial instant
 
 %we put different angles in phi and theta to represent the same initial
@@ -13,7 +17,7 @@ Euler0131 = [0 pi/4 0]';
 %% omegas in body reference frame
 
 %values for initial omegas
-wx =0.1;
+wx =0.2;
 wy = 0;
 wz = 0;
 % wy = 0.1;
@@ -53,14 +57,15 @@ theta_g0 = 0;
 
 
 
-%initial position and velocity with Keplerian Parameters
-a = 10500;
-e = 0;
-i_0 =0;
-OM_0 = 0;
-om_0 = 0;
-true_anomaly0 = 0;
-[r0,v0] = kep2car(a, e, i_0, OM_0, om_0, true_anomaly0, muP);
+% orbit keplerian parameters assigned
+a = 2.4501e+4; %[km]
+e = 0.6665; %[-]
+i_0  =30; %[deg]
+OM_0 = 0; %[rad]
+om_0 = 0; %[rad]
+true_anomaly0 = 0; %[rad]
+muE = astroConstants(13);
+[r0,v0] = kep2car(a, e, i_0, OM_0, om_0, true_anomaly0, muE);
 
 
 
@@ -89,7 +94,40 @@ h_versor = h ./ (h_norm);
 Ts = 0.1; %s, sample time of sensors
 f = 1/ Ts;
 %%  stuff for magnetic torque
-magnetic_init;
+
+%clear we t0 theta_g0 init_mjd2000
+
+we = 7.2916e-05;  % earth rotation speed
+t0 = 0;           % init time
+theta_g0 = 0;     % theta greenwich at t0
+init_mjd2000 = 0; % init mjd2000
+
+igrfSg = fopen('igrfSg.txt');
+igrfSh = fopen('igrfSh.txt');
+
+g_mat = cell2mat(textscan(igrfSg, '%f %f %f %f'));
+h_mat = cell2mat(textscan(igrfSh, '%f %f %f %f'));
+
+
+%[Mat_g, Mat_h, Mat_gsv, Mat_hsv]= ghnorm();
+
+
+%% star tracker data
+
+% stars_ right ascension declination 
+matrix_stars = [(18 + 42/60 + 47/3600)*15, 59 + 37/60 + 50/3600;...
+                (22 + 28/60          )*15, 57 + 41/60 + 45/3600; ...
+                (21 + 08/60 + 52/3600)*15, 38 + 56/60 + 51/3600]; 
+            
+[Sx, Sy, Sz] = sph2cart(matrix_stars(:,1)*pi/180, matrix_stars(:,2)*pi/180, ones(3,1)); 
+star1_in = [Sx(1); Sy(1); Sz(1)]; 
+star2_in = [Sx(2); Sy(2); Sz(2)]; 
+star3_in =  [Sx(3); Sy(3); Sz(3)]; 
+
+A_SB = [1 0 0; 0 1 0; 0 0 1]; 
+% Matrix of rotation between star sensor frame
+% and body frame is Identity matrix in such a way that the sensor has as axis of view the same z_body axis
+
 
 %% perform simulation
 
@@ -103,29 +141,29 @@ ombody = squeeze(out.omega);
 Eulerangles = squeeze (out.Eulerangles);
 
 
-% %% plot stl model of spacecraft
-% TR_new = plot3(0, 0, 0);
-% data = stlread('satellite_def.stl');
-% trisurf ( data );
-% axis equal
-% axis([-10 10 -10 10 -10 10 ]*1000)
-% 
-% 
-% for i = 1 : length(t)
-% 
-% data_new = data.Points * out.A_final(:, :, i);
-% delete (TR_new);
-% 
-% TR_new = triangulation(data.ConnectivityList, data_new(:, 1),  data_new(:, 2),  data_new(:, 3));
-% TR_new = trisurf (TR_new);
-% 
-% SAT.EdgeColor = 'k';
-% SAT.FaceAlpha = 0.5;
-% colormap parula
-%   
-% drawnow
-% 
-% end
+%% plot stl model of spacecraft
+TR_new = plot3(0, 0, 0);
+data = stlread('satellite_def.stl');
+trisurf ( data );
+axis equal
+axis([-10 10 -10 10 -10 10 ]*1000)
+
+
+for i = 1 : length(t)
+
+data_new = data.Points * out.A_final(:, :, i);
+delete (TR_new);
+
+TR_new = triangulation(data.ConnectivityList, data_new(:, 1),  data_new(:, 2),  data_new(:, 3));
+TR_new = trisurf (TR_new);
+
+SAT.EdgeColor = 'k';
+SAT.FaceAlpha = 0.5;
+colormap parula
+  
+drawnow
+
+end
 
 
 %% model geometry of spacecraft and solar panels
@@ -139,31 +177,52 @@ n7=[1;0;0]; n8=-n7;
 n9=[1;0;0]; n10=-n9; %back
 
 
-a_body = 1.1; %m
-b_body = 0.7; %m
-c_body = 0.7; %m
+a_body = 1.1; %m along z
+b_body = 0.7; %m along y 
+c_body = 0.7; %m along x
+
+% body references
+% x = c
+% y = b
+% z = a
 
 
-Sat_dim = [a_body b_body c_body];
-N = [n1 n2 n3 n4 n5 n6];
-
-
-%% star tracker analysis 
-
-% stars_ right ascension declination 
-matrix_stars = [(18 + 42/60 + 47/3600)*15, 59 + 37/60 + 50/3600;...
-                (22 + 28/60          )*15, 57 + 41/60 + 45/3600; ...
-                (21 + 08/60 + 52/3600)*15, 38 + 56/60 + 51/3600]; 
-            
-[Sx, Sy, Sz] = sph2cart(matrix_stars(:,1)*pi/180, matrix_stars(:,2)*pi/180, ones(3,1)); 
-star1_in = [Sx(1); Sy(1); Sz(1)]; 
-star2_in = [Sx(2); Sy(2); Sz(2)]; 
-star3_in =  [Sx(3); Sy(3); Sz(3)]; 
-
-% A_SB = A_B/N %from body frame to sensor but we suppose they are the same
+Sat_dim = [c_body b_body a_body]; %in this order to be consistent with srp block
+Normal = [n1 n2 n3 n4 n5 n6];
 
 
 
 
+%% control torque
+Thrust = 1; %N ?? value invented, to be confirmed once we select a datasheet for a constant thrust
+arm = [0.35, 0, 0; 
+            -0.35, 0, 0; 
+             0.35, 0, 0; 
+            -0.35, 0, 0; 
+             0, 0.35, -0.55;
+             0, 0.35, 0.55]; 
 
+force_dir = [0, 0, -1;
+                  0, 0, -1;
+                  -1, 0, 0;
+                  -1, 0, 0;
+                  0, -1, 0;
+                  0, -1, 0;];
+
+
+% m ?? values taken as half of the dimensions of the spacecraft 
+MIB = 0.1; %s minimum impulse bit, time of actuator  
+
+
+
+%% linear observer
+
+
+A_sys = [eye(3,3), zeros(3,3)]; 
+B_sys = [eye(3,3), zeros(3,3)]; 
+C_sys = [eye(3,3), zeros(3,3)]; 
+D_sys = [eye(3,3), zeros(3,3)];
+Q_weight = diag ([1 2 3]);
+R_weight  = diag ([1 2 3]);
+[P_LQR,G_LQR,L_LQR] = icare(A_sys, B_sys, Q_weight, R_weight, zeros(6,3), eye(6,6), zeros(6,6));
 
